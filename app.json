@@ -1,7 +1,7 @@
 {
     "id": "51cdb113-17be-46d9-9e27-6699ca8200f9",
     "version": "0.0.1",
-    "requiredApiVersion": "^1.4.0",
+    "requiredApiVersion": "^1.32.0",
     "iconFile": "icon.png",
     "author": {
         "name": "Beyond",
@@ -11,5 +11,8 @@
     "name": "BeyondBot",
     "nameSlug": "beyondbot",
     "classFile": "BeyondBotApp.ts",
-    "description": "Greet bot for beyond"
+    "description": "Greet bot for beyond",
+    "implements": [
+        "IPostMessageSent"
+    ]
 }

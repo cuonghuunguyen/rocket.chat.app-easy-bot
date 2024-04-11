@@ -1,0 +1,6 @@
+{
+	"config_bot_agent_username_label": "Bot Agent Username",
+	"config_bot_agent_username_desc": "After creating the Bot User and add it to your BOT department, add its username here",
+	"config_bot_replies_label": "Bot Replies Config",
+	"config_bot_replies_desc": "The JSON which is used for customizing bot responses"
+}

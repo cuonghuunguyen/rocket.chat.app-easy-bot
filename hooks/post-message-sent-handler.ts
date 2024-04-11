@@ -1,25 +1,27 @@
 import { IHttp, IModify, IPersistence, IRead } from "@rocket.chat/apps-engine/definition/accessors";
 import { ILivechatMessage, ILivechatRoom } from "@rocket.chat/apps-engine/definition/livechat";
 
-import RocketChatWhatsAppApp from "../RocketChatWhatsAppApp";
-import { AgentDisplayInfo, ConfigId, ServerSettingID } from "../constants/settings";
+import BeyondBotApp from "../BeyondBotApp";
+import { ConfigId, ServerSettingID } from "../constants/settings";
+import { computeTransferAction, getBotReplies, sendGreetingMessage } from "../helpers/bot-helpers";
+import { isValidTimeRange } from "../helpers/day-helpers";
+import { addRoomCustomField, closeRoom, sendText } from "../helpers/rocketchat-helper";
+import { ActionTransferRoom, BotButtonType, IBotReply } from "../types/bot";
+
+import { Interactive } from "./../types/whatsapp";
 
 /**
  * The default handler for the hook IPostMessageSent of Rocket.Chat App-Engine
  */
 class PostMessageSentHandler {
 	constructor(
-		protected app: RocketChatWhatsAppApp,
+		protected app: BeyondBotApp,
 		protected message: ILivechatMessage,
 		protected reader: IRead,
 		protected http: IHttp,
 		protected persistence: IPersistence,
 		protected modifier: IModify
 	) {}
-
-	private isWhatsAppRoom(room: ILivechatRoom): boolean {
-		return room.source?.type === "app" && (room.source as any)?.id === this.app.getID();
-	}
 
 	public async run(): Promise<void> {
 		const settingReader = this.reader.getEnvironmentReader().getSettings();
@@ -31,86 +33,130 @@ class PostMessageSentHandler {
 		const phone = visitor?.phone?.[0]?.phoneNumber;
 
 		const siteUrl = await serverSettingReader.getValueById(ServerSettingID.SITE_URL);
-		const agentDisplayInfo: AgentDisplayInfo = await settingReader.getValueById(ConfigId.AGENT_DISPLAY_INFO);
 		const messageType = (this.message as any)._unmappedProperties_?.t;
+		const interactive: Interactive | undefined = this.message.customFields?.interactive;
+
+		const botAgentUsername = await settingReader.getValueById(ConfigId.BOT_AGENT_USERNAME);
+		const botAgent = await this.reader.getUserReader().getByUsername(botAgentUsername);
+		const isNewRoom = room.customFields?.new !== false;
+
+		if (!botAgent) {
+			console.error("No Agent found", botAgentUsername);
+			return;
+		}
 
 		if (messageType) {
 			return;
 		}
 
-		const agentName =
-			agentDisplayInfo === AgentDisplayInfo.USERNAME
-				? sender.username
-				: agentDisplayInfo === AgentDisplayInfo.NAME
-				? sender.name
-				: undefined;
+		if (this.message.editedAt) {
+			return;
+		}
+
+		if (sender.id !== room.visitor.id) {
+			return;
+		}
+
+		if (room.servedBy?.username !== botAgentUsername) {
+			return;
+		}
+
+		const replies = await getBotReplies(this.reader);
 
 		try {
-			if (!this.isWhatsAppRoom(room)) {
-				return;
-			}
-
-			if (sender.id === room.visitor.id) {
-				return;
-			}
-
-			if (!phone) {
-				return;
-			}
-
-			if (text) {
-				await sdk.sendText(phone, text, this.message.id);
-			}
-
-			if (attachments) {
-				for (const attachment of attachments) {
-					if (attachment.imageUrl) {
-						let url: string;
-						if (attachment.title?.link) {
-							url = this.getAttachmentUrl(attachment.title?.link as string, siteUrl);
-						} else {
-							url = this.getAttachmentUrl(attachment.imageUrl as string, siteUrl);
-						}
-
-						await sdk.sendImage(phone, url, this.message.id, {
-							caption: attachment.description
-						});
-						continue;
-					}
-
-					if (attachment.audioUrl) {
-						const { url, caption } = this.extractAttachmentInfo(attachment, "audioUrl", siteUrl);
-						if (caption) {
-							await sdk.sendText(phone, caption, this.message.id);
-						}
-						await sdk.sendAudio(phone, url, this.message.id);
-						continue;
-					}
-
-					if (attachment.videoUrl) {
-						const { url, caption } = this.extractAttachmentInfo(attachment, "videoUrl", siteUrl);
-						if (caption) {
-							await sdk.sendText(phone, caption, this.message.id);
-						}
-						await sdk.sendVideo(phone, url, this.message.id);
-						continue;
-					}
-
-					if (attachment.type === "file") {
-						if (attachment.title?.link) {
-							await sdk.sendDocument(phone, this.getAttachmentUrl(attachment.title?.link, siteUrl), this.message.id, {
-								caption: attachment.description,
-								filename: attachment.title.value
-							});
-						}
-						continue;
-					}
+			if (!interactive) {
+				if (isNewRoom) {
+					await addRoomCustomField(room, "new", false, botAgent, this.modifier);
+					await sendGreetingMessage(room, this.reader, this.modifier);
+					return;
 				}
+				console.error("Cannot find interactive in the message", this.message.customFields);
+				await sendText(
+					replies.wrongSelectionText || "Please one of the answers bellow to continue!",
+					room,
+					botAgent,
+					this.modifier
+				);
+				await sendGreetingMessage(room, this.reader, this.modifier);
+				return;
+			}
+
+			const buttonReply = interactive.type === "button_reply" ? interactive.button_reply : interactive.list_reply;
+
+			const validReply: ActionTransferRoom | undefined = replies.buttons?.find(
+				button =>
+					button.type === BotButtonType.TRANSFER_CHAT && buttonReply.id.startsWith(computeTransferAction(button))
+			) as ActionTransferRoom | undefined;
+
+			if (!validReply) {
+				console.error("Cannot find a valid reply", this.message.customFields);
+				await sendText(
+					replies.wrongSelectionText || "Please one of the answers bellow to continue!",
+					room,
+					botAgent,
+					this.modifier
+				);
+				await sendGreetingMessage(room, this.reader, this.modifier);
+				return;
+			}
+
+			await this.transferRoom(validReply, replies);
+
+			if (replies.transferSuccessText) {
+				await sendText(replies.transferSuccessText, room, botAgent, this.modifier);
 			}
 		} catch (error) {
-			await this.handleError(error);
 			console.error(error);
+			await sendText(
+				replies.technicalErrorText || "Technical error happened, please try again later",
+				room,
+				botAgent,
+				this.modifier
+			);
 		}
+	}
+
+	private async transferRoom(actionTransfer: ActionTransferRoom, botReply: IBotReply): Promise<void> {
+		const room = this.message.room as ILivechatRoom;
+		const { department: departmentNameOrId, conditions } = actionTransfer;
+
+		console.log("Transfering room with action", actionTransfer);
+		const { startBusinessHour, stopBusinessHour } = conditions || {};
+		const department = await this.reader.getLivechatReader().getLivechatDepartmentByIdOrName(departmentNameOrId);
+
+		if (!department) {
+			throw "Cannot find department";
+		}
+
+		const departmentIsOnline = this.reader.getLivechatReader().isOnlineAsync(department.id);
+
+		if (!departmentIsOnline) {
+			throw "Department is not online";
+		}
+
+		if (!isValidTimeRange(startBusinessHour, stopBusinessHour)) {
+			console.error(
+				`Transfer failed to ${department.name} because it is out of business hour from ${startBusinessHour} to ${stopBusinessHour}`
+			);
+
+			await sendText(
+				botReply.departmentOfflineText || "Department is offline, please try again later",
+				room,
+				room.servedBy!,
+				this.modifier
+			);
+
+			await closeRoom(room, `Transfer failed to ${departmentNameOrId}`, this.modifier);
+			return;
+		}
+
+		await this.modifier
+			.getUpdater()
+			.getLivechatUpdater()
+			.transferVisitor((this.message.room as ILivechatRoom).visitor, {
+				currentRoom: this.message.room as ILivechatRoom,
+				targetDepartment: department.id
+			});
 	}
 }
 export default PostMessageSentHandler;
