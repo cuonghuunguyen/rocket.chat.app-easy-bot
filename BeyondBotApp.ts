@@ -1,4 +1,3 @@
-import { App } from "@rocket.chat/apps-engine/definition/App";
 import {
 	IAppAccessors,
 	IConfigurationExtend,
@@ -10,6 +9,7 @@ import {
 	IPersistence,
 	IRead
 } from "@rocket.chat/apps-engine/definition/accessors";
+import { App } from "@rocket.chat/apps-engine/definition/App";
 import { IMessage, IPostMessageSent } from "@rocket.chat/apps-engine/definition/messages";
 import { IAppInfo } from "@rocket.chat/apps-engine/definition/metadata";
 import { ISetting } from "@rocket.chat/apps-engine/definition/settings";

@@ -5,7 +5,7 @@ export function validateIBotReply(data: any): data is IBotReply {
 		return false;
 	}
 
-	const { buttons, departmentOfflineText, technicalErrorText, text, wrongSelectionText } = data;
+	const { buttons, departmentOfflineText, technicalErrorText, text, wrongSelectionText, fallbackDepartment } = data;
 
 	if (typeof text !== "string") {
 		return false;
@@ -24,15 +24,15 @@ export function validateIBotReply(data: any): data is IBotReply {
 		return false;
 	}
 
+	if (fallbackDepartment !== undefined && typeof fallbackDepartment !== "string") {
+		return false;
+	}
+
 	if (technicalErrorText !== undefined && typeof technicalErrorText !== "string") {
 		return false;
 	}
 
-	if (wrongSelectionText !== undefined && typeof wrongSelectionText !== "string") {
-		return false;
-	}
-
-	return true;
+	return !(wrongSelectionText !== undefined && typeof wrongSelectionText !== "string");
 }
 
 function isValidButton(button: any): button is ActionSendMessage | ActionTransferRoom {
@@ -44,18 +44,11 @@ function isValidButton(button: any): button is ActionSendMessage | ActionTransfe
 		return true;
 	}
 
-	if (button.type === "transfer" && isValidActionTransferRoom(button)) {
-		return true;
-	}
-
-	return false;
+	return !!(button.type === "transfer" && isValidActionTransferRoom(button));
 }
 
 function isValidActionSendMessage(action: any): action is ActionSendMessage {
-	if (typeof action.text !== "string" || typeof action.title !== "string" || action.type !== "send-message") {
-		return false;
-	}
-	return true;
+	return !(typeof action.text !== "string" || typeof action.title !== "string" || action.type !== "send-message");
 }
 
 function isValidActionTransferRoom(action: any): action is ActionTransferRoom {
