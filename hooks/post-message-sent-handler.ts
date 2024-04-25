@@ -2,10 +2,10 @@ import { IHttp, IModify, IPersistence, IRead } from "@rocket.chat/apps-engine/de
 import { ILivechatMessage, ILivechatRoom } from "@rocket.chat/apps-engine/definition/livechat";
 
 import BeyondBotApp from "../BeyondBotApp";
-import { ConfigId } from "../constants/settings";
+import { ConfigId, ServerSettingID } from "../constants/settings";
 import { computeTransferAction, getBotReplies, sendGreetingMessage } from "../helpers/bot-helpers";
 import { isValidTimeRange } from "../helpers/day-helpers";
-import { addRoomCustomField, closeRoom, sendText, transferRoom } from "../helpers/rocketchat-helper";
+import { addRoomCustomField, closeRoom, sendText } from "../helpers/rocketchat-helper";
 import { ActionTransferRoom, BotButtonType, IBotReply } from "../types/bot";
 
 import { Interactive } from "./../types/whatsapp";
@@ -25,10 +25,14 @@ class PostMessageSentHandler {
 
 	public async run(): Promise<void> {
 		const settingReader = this.reader.getEnvironmentReader().getSettings();
+		const serverSettingReader = this.reader.getEnvironmentReader().getServerSettings();
 
-		const { sender } = this.message;
+		const { text, attachments, sender } = this.message;
 		const room = this.message.room as ILivechatRoom;
+		const visitor = room.visitor;
+		const phone = visitor?.phone?.[0]?.phoneNumber;
 
+		const siteUrl = await serverSettingReader.getValueById(ServerSettingID.SITE_URL);
 		const messageType = (this.message as any)._unmappedProperties_?.t;
 		const interactive: Interactive | undefined = this.message.customFields?.interactive;
 
@@ -118,23 +122,23 @@ class PostMessageSentHandler {
 
 		console.log("Transfering room with action", actionTransfer);
 		const { startBusinessHour, stopBusinessHour } = conditions || {};
+		const department = await this.reader.getLivechatReader().getLivechatDepartmentByIdOrName(departmentNameOrId);
 
-		try {
-			if (!isValidTimeRange(startBusinessHour, stopBusinessHour)) {
-				console.error(
-					`Transfer failed to ${departmentNameOrId} because it is out of business hour from ${startBusinessHour} to ${stopBusinessHour}`
-				);
+		if (!department) {
+			throw "Cannot find department";
+		}
 
-				if (botReply.fallbackDepartment) {
-					await transferRoom(room, botReply.fallbackDepartment, this.reader, this.modifier);
-				} else {
-					throw "No fallback department found for this room";
-				}
-			} else {
-				await transferRoom(room, departmentNameOrId, this.reader, this.modifier);
-			}
-		} catch (error) {
-			console.error("Transfer error", error);
+		const departmentIsOnline = this.reader.getLivechatReader().isOnlineAsync(department.id);
+
+		if (!departmentIsOnline) {
+			throw "Department is not online";
+		}
+
+		if (!isValidTimeRange(startBusinessHour, stopBusinessHour)) {
+			console.error(
+				`Transfer failed to ${department.name} because it is out of business hour from ${startBusinessHour} to ${stopBusinessHour}`
+			);
+
 			await sendText(
 				botReply.departmentOfflineText || "Department is offline, please try again later",
 				room,
@@ -143,7 +147,16 @@ class PostMessageSentHandler {
 			);
 
 			await closeRoom(room, `Transfer failed to ${departmentNameOrId}`, this.modifier);
+			return;
 		}
+
+		await this.modifier
+			.getUpdater()
+			.getLivechatUpdater()
+			.transferVisitor((this.message.room as ILivechatRoom).visitor, {
+				currentRoom: this.message.room as ILivechatRoom,
+				targetDepartment: department.id
+			});
 	}
 }
 export default PostMessageSentHandler;

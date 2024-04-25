@@ -6,7 +6,6 @@ export interface IBotReply {
 	transferSuccessText?: string;
 	departmentOfflineText?: string;
 	technicalErrorText?: string;
-	fallbackDepartment?: string;
 	buttons?: (ActionSendMessage | ActionTransferRoom)[];
 }
 export interface IBotButtonBase {
@@ -27,6 +26,7 @@ export interface ActionSendMessage extends IBotButtonBase {
 export interface ActionTransferRoom extends IBotButtonBase {
 	type: BotButtonType.TRANSFER_CHAT;
 	department: string;
+	fallbackDepartment?: string;
 	conditions?: {
 		startBusinessHour?: string;
 		stopBusinessHour?: string;
