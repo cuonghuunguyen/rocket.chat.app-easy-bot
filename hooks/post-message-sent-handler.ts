@@ -6,6 +6,7 @@ import { ConfigId, ServerSettingID } from "../constants/settings";
 import { computeTransferAction, getBotReplies, sendGreetingMessage } from "../helpers/bot-helpers";
 import { isValidTimeRange } from "../helpers/day-helpers";
 import { addRoomCustomField, closeRoom, sendText } from "../helpers/rocketchat-helper";
+import { templateResolver } from "../helpers/template-resolver";
 import { ActionTransferRoom, BotButtonType, IBotReply } from "../types/bot";
 
 import { Interactive } from "./../types/whatsapp";
@@ -140,7 +141,10 @@ class PostMessageSentHandler {
 			);
 
 			await sendText(
-				botReply.departmentOfflineText || "Department is offline, please try again later",
+				templateResolver(botReply.departmentOfflineText || "Department is offline, please try again later", {
+					startBusinessHour,
+					stopBusinessHour
+				}),
 				room,
 				room.servedBy!,
 				this.modifier
