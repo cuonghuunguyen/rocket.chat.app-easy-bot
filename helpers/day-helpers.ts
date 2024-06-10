@@ -1,23 +1,32 @@
-export const isValidTimeRange = (startTime: string | undefined, stopTime: string | undefined): boolean => {
+export const isValidTimeRange = (
+	startTime: string | undefined,
+	stopTime: string | undefined,
+	dstEnabled: boolean
+): boolean => {
 	if (startTime) {
 		// Compare the given time with the current time
-		if (isTimeMoreThanNow(startTime)) {
+		if (isTimeMoreThanNow(startTime, dstEnabled)) {
 			return false;
 		}
 	}
 
 	if (stopTime) {
 		// Compare the given time with the current time
-		if (isTimeLessThanOrEqualToNow(stopTime)) {
+		if (isTimeLessThanOrEqualToNow(stopTime, dstEnabled)) {
 			return false;
 		}
 	}
 	return true;
 };
 
-export const isTimeLessThanOrEqualToNow = (time: string) => {
+export const isTimeLessThanOrEqualToNow = (time: string, dstEnabled: boolean) => {
 	// Split the given time into hours and minutes
-	const [hours, minutes] = time.split(":").map(Number);
+	// eslint-disable-next-line prefer-const
+	let [hours, minutes] = time.split(":").map(Number);
+
+	if (dstEnabled) {
+		hours -= 1;
+	}
 
 	// Get the current date and time
 	const now = new Date();
@@ -29,6 +38,6 @@ export const isTimeLessThanOrEqualToNow = (time: string) => {
 	return givenTime <= now;
 };
 
-export const isTimeMoreThanNow = (time: string) => {
-	return !isTimeLessThanOrEqualToNow(time);
+export const isTimeMoreThanNow = (time: string, dtsEnabled: boolean) => {
+	return !isTimeLessThanOrEqualToNow(time, dtsEnabled);
 };

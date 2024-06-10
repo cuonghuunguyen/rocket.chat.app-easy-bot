@@ -135,7 +135,7 @@ class PostMessageSentHandler {
 			throw "Department is not online";
 		}
 
-		if (!isValidTimeRange(startBusinessHour, stopBusinessHour)) {
+		if (!isValidTimeRange(startBusinessHour, stopBusinessHour, botReply.dstEnabled)) {
 			console.error(
 				`Transfer failed to ${department.name} because it is out of business hour from ${startBusinessHour} to ${stopBusinessHour}`
 			);

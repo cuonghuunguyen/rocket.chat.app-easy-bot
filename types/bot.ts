@@ -1,6 +1,7 @@
 import { IMessageAction } from "@rocket.chat/apps-engine/definition/messages";
 
 export interface IBotReply {
+	dstEnabled: boolean;
 	text: string;
 	wrongSelectionText?: string;
 	transferSuccessText?: string;
