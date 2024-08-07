@@ -81,12 +81,14 @@ export const sendGreetingMessage = async (room: ILivechatRoom, reader: IRead, mo
 };
 
 export const computeTransferAction = (action: ActionTransferRoom, onlyDepartment = false) => {
-	const { department, conditions } = action;
+	const { department, conditions, title } = action;
 	console.log(inspect(action));
 	if (onlyDepartment) {
 		return `transfer/${department}`;
 	}
-	return `transfer/${department}/${conditions?.startBusinessHour || "_"}/${conditions?.stopBusinessHour || "_"}`;
+	return `transfer/${department}/${title}/${conditions?.startBusinessHour || "_"}/${
+		conditions?.stopBusinessHour || "_"
+	}`;
 };
 
 export const getTransferAction = (actionRaw: string): ActionTransferRoom | undefined => {
@@ -101,11 +103,11 @@ export const getTransferAction = (actionRaw: string): ActionTransferRoom | undef
 		return;
 	}
 
-	const [_, department, startBusinessHourRaw, stopBusinessHourRaw] = segments;
+	const [_, department, title, startBusinessHourRaw, stopBusinessHourRaw] = segments;
 
 	return {
 		type: BotButtonType.TRANSFER_CHAT,
-		title: "transfer",
+		title: title,
 		department,
 		conditions: {
 			startBusinessHour: startBusinessHourRaw === "_" ? undefined : startBusinessHourRaw,
