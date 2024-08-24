@@ -119,10 +119,10 @@ class PostMessageSentHandler {
 
 	private async transferRoom(actionTransfer: ActionTransferRoom, botReply: IBotReply): Promise<void> {
 		const room = this.message.room as ILivechatRoom;
-		const { department: departmentNameOrId, conditions } = actionTransfer;
+		const { department: departmentNameOrId, conditions, welcomeMessage } = actionTransfer;
 
 		console.log("Transfering room with action", actionTransfer);
-		const { startBusinessHour, stopBusinessHour } = conditions || {};
+		const { startBusinessHour, stopBusinessHour, workDays } = conditions || {};
 		const department = await this.reader.getLivechatReader().getLivechatDepartmentByIdOrName(departmentNameOrId);
 
 		if (!department) {
@@ -135,7 +135,7 @@ class PostMessageSentHandler {
 			throw "Department is not online";
 		}
 
-		if (!isValidTimeRange(startBusinessHour, stopBusinessHour, botReply.dstEnabled)) {
+		if (!isValidTimeRange(startBusinessHour, stopBusinessHour, workDays, botReply.dstEnabled)) {
 			console.error(
 				`Transfer failed to ${department.name} because it is out of business hour from ${startBusinessHour} to ${stopBusinessHour}`
 			);
@@ -161,6 +161,19 @@ class PostMessageSentHandler {
 				currentRoom: this.message.room as ILivechatRoom,
 				targetDepartment: department.id
 			});
+
+		if (welcomeMessage) {
+			const newRoom = (await this.reader.getRoomReader().getById(room.id)) as ILivechatRoom;
+			await sendText(
+				templateResolver(welcomeMessage, {
+					startBusinessHour,
+					stopBusinessHour
+				}),
+				newRoom,
+				newRoom.servedBy!,
+				this.modifier
+			);
+		}
 	}
 }
 export default PostMessageSentHandler;

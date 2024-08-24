@@ -1,11 +1,22 @@
+const DayMapping = ["mo", "tu", "we", "th", "fr", "sa", "su"];
+
+const isValidDay = (datesInChar: string[] | undefined, dstEnabled: boolean): boolean => {
+	const date = new Date(Date.now() + (dstEnabled ? 3600000 : 0));
+	const day = date.getDay();
+	console.log("TODAY: ", day, datesInChar, datesInChar?.includes(DayMapping[day]));
+	return !datesInChar || datesInChar.includes(DayMapping[day]);
+};
+
 export const isValidTimeRange = (
 	startTime: string | undefined,
 	stopTime: string | undefined,
+	workDays: string[] | undefined,
 	dstEnabled: boolean
 ): boolean => {
 	if (startTime) {
 		// Compare the given time with the current time
 		if (isTimeMoreThanNow(startTime, dstEnabled)) {
+			console.error("It's not the working time yet");
 			return false;
 		}
 	}
@@ -13,10 +24,12 @@ export const isValidTimeRange = (
 	if (stopTime) {
 		// Compare the given time with the current time
 		if (isTimeLessThanOrEqualToNow(stopTime, dstEnabled)) {
+			console.error("The working time is over");
 			return false;
 		}
 	}
-	return true;
+
+	return isValidDay(workDays, dstEnabled);
 };
 
 export const isTimeLessThanOrEqualToNow = (time: string, dstEnabled: boolean) => {

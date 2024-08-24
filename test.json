@@ -1,0 +1,26 @@
+{
+	"text": "Hello, I am bot agent from Beyond. How can I help you",
+	"wrongSelectionText": "Please make the choice again",
+	"departmentOfflineText": "Department is not available right now, please try again later from $startBusinessHour$ to $stopBusinessHour$",
+	"technicalErrorText": "Technical error happened, please try again later",
+	"buttons": [
+		{
+			"type": "transfer",
+			"title": "General questions",
+			"department": "Customer Success",
+			"conditions": {
+				"startBusinessHour": "9:00",
+				"stopBusinessHour": "17:00"
+			}
+		},
+		{
+			"type": "transfer",
+			"title": "Technical questions",
+			"department": "Engineering",
+			"conditions": {
+				"startBusinessHour": "7:00",
+				"stopBusinessHour": "17:00"
+			}
+		}
+	]
+}

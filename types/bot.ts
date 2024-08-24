@@ -31,7 +31,9 @@ export interface ActionTransferRoom extends IBotButtonBase {
 	conditions?: {
 		startBusinessHour?: string;
 		stopBusinessHour?: string;
+		workDays?: string[];
 	};
+	welcomeMessage?: string;
 }
 
 export interface IExtendedMessageAction extends IMessageAction {
