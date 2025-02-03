@@ -19,7 +19,7 @@ import { ConfigId, settings } from "./constants/settings";
 import { validateIBotReply } from "./helpers/validation";
 import PostMessageSentHandler from "./hooks/post-message-sent-handler";
 
-class BeyondBotApp extends App implements IPostMessageSent {
+class EasyBotApp extends App implements IPostMessageSent {
 	constructor(info: IAppInfo, logger: ILogger, accessors: IAppAccessors) {
 		super(info, logger, accessors);
 	}
@@ -69,4 +69,4 @@ class BeyondBotApp extends App implements IPostMessageSent {
 	}
 }
 
-export default BeyondBotApp;
+export default EasyBotApp;

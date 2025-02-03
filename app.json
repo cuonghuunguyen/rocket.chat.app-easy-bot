@@ -1,17 +1,17 @@
 {
-    "id": "51cdb113-17be-46d9-9e27-6699ca8200f9",
-    "version": "1.1.0",
+    "id": "51cdb113-17be-46d9-9e27-6699ca8200f8",
+    "version": "1.0.0",
     "requiredApiVersion": "^1.32.0",
     "iconFile": "icon.png",
     "author": {
-        "name": "Beyond",
-        "homepage": "Beyond",
-        "support": "Beyond"
+        "name": "Cuong Huu Nguyen",
+        "homepage": "https://github.com/cuonghuunguyen",
+        "support": "CuongHuuNguyen98@gmail.com"
     },
-    "name": "BeyondBot",
-    "nameSlug": "beyondbot",
-    "classFile": "BeyondBotApp.ts",
-    "description": "Greet bot for beyond",
+    "name": "Easy Bot",
+    "nameSlug": "easy-bot",
+    "classFile": "EasyBotApp.ts",
+    "description": "An customizable and easy to build bot for Rocket.Chat livechat",
     "implements": [
         "IPostMessageSent"
     ]

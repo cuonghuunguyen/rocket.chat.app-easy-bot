@@ -1,7 +1,7 @@
 import { IHttp, IModify, IPersistence, IRead } from "@rocket.chat/apps-engine/definition/accessors";
 import { ILivechatMessage, ILivechatRoom } from "@rocket.chat/apps-engine/definition/livechat";
 
-import BeyondBotApp from "../BeyondBotApp";
+import EasyBotApp from "../EasyBotApp";
 import { ConfigId, ServerSettingID } from "../constants/settings";
 import { computeTransferAction, getBotReplies, sendGreetingMessage } from "../helpers/bot-helpers";
 import { isValidTimeRange } from "../helpers/day-helpers";
@@ -16,7 +16,7 @@ import { Interactive } from "./../types/whatsapp";
  */
 class PostMessageSentHandler {
 	constructor(
-		protected app: BeyondBotApp,
+		protected app: EasyBotApp,
 		protected message: ILivechatMessage,
 		protected reader: IRead,
 		protected http: IHttp,
