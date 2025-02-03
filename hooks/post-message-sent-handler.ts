@@ -2,14 +2,16 @@ import { IHttp, IModify, IPersistence, IRead } from "@rocket.chat/apps-engine/de
 import { ILivechatMessage, ILivechatRoom } from "@rocket.chat/apps-engine/definition/livechat";
 
 import EasyBotApp from "../EasyBotApp";
-import { ConfigId, ServerSettingID } from "../constants/settings";
-import { computeTransferAction, getBotReplies, sendGreetingMessage } from "../helpers/bot-helpers";
-import { isValidTimeRange } from "../helpers/day-helpers";
-import { addRoomCustomField, closeRoom, sendText } from "../helpers/rocketchat-helper";
-import { templateResolver } from "../helpers/template-resolver";
-import { ActionTransferRoom, BotButtonType, IBotReply } from "../types/bot";
-
-import { Interactive } from "./../types/whatsapp";
+import { ConfigId } from "../constants/settings";
+import {
+	getBotReplies,
+	sendBotResponses,
+	sendGreetingMessage,
+	sendTechnicalErrorMessage,
+	sendWrongResponseMessage
+} from "../helpers/bot-helpers";
+import { addRoomCustomField } from "../helpers/rocketchat-helper";
+import { Interactive } from "../types";
 
 /**
  * The default handler for the hook IPostMessageSent of Rocket.Chat App-Engine
@@ -26,16 +28,11 @@ class PostMessageSentHandler {
 
 	public async run(): Promise<void> {
 		const settingReader = this.reader.getEnvironmentReader().getSettings();
-		const serverSettingReader = this.reader.getEnvironmentReader().getServerSettings();
-
-		const { text, attachments, sender } = this.message;
+		const { token, text } = this.message;
 		const room = this.message.room as ILivechatRoom;
-		const visitor = room.visitor;
-		const phone = visitor?.phone?.[0]?.phoneNumber;
-
-		const siteUrl = await serverSettingReader.getValueById(ServerSettingID.SITE_URL);
-		const messageType = (this.message as any)._unmappedProperties_?.t;
 		const interactive: Interactive | undefined = this.message.customFields?.interactive;
+
+		const messageType = (this.message as any)._unmappedProperties_?.t;
 
 		const botAgentUsername = await settingReader.getValueById(ConfigId.BOT_AGENT_USERNAME);
 		const botAgent = await this.reader.getUserReader().getByUsername(botAgentUsername);
@@ -46,7 +43,7 @@ class PostMessageSentHandler {
 			return;
 		}
 
-		if (messageType) {
+		if (messageType && messageType !== "uj") {
 			return;
 		}
 
@@ -54,7 +51,7 @@ class PostMessageSentHandler {
 			return;
 		}
 
-		if (sender.id !== room.visitor.id) {
+		if (!token) {
 			return;
 		}
 
@@ -62,117 +59,35 @@ class PostMessageSentHandler {
 			return;
 		}
 
-		const replies = await getBotReplies(this.reader);
-
 		try {
 			if (!interactive) {
 				if (isNewRoom) {
 					await addRoomCustomField(room, "new", false, botAgent, this.modifier);
-					await sendGreetingMessage(room, this.reader, this.modifier);
+					await sendGreetingMessage(room, this.reader, this.modifier, this.http);
 					return;
 				}
 				console.error("Cannot find interactive in the message", this.message.customFields);
-				await sendText(
-					replies.wrongSelectionText || "Please one of the answers bellow to continue!",
-					room,
-					botAgent,
-					this.modifier
-				);
-				await sendGreetingMessage(room, this.reader, this.modifier);
+				await sendWrongResponseMessage(room, this.reader, this.modifier, this.http);
+				await sendGreetingMessage(room, this.reader, this.modifier, this.http);
 				return;
 			}
 
-			const buttonReply = interactive.type === "button_reply" ? interactive.button_reply : interactive.list_reply;
+			const botReplies = await getBotReplies(this.reader);
 
-			const validReply: ActionTransferRoom | undefined = replies.buttons?.find(
-				button =>
-					button.type === BotButtonType.TRANSFER_CHAT && buttonReply.id.startsWith(computeTransferAction(button))
-			) as ActionTransferRoom | undefined;
+			const botResponses = botReplies[interactive.actionId];
 
-			if (!validReply) {
+			if (!botResponses) {
 				console.error("Cannot find a valid reply", this.message.customFields);
-				await sendText(
-					replies.wrongSelectionText || "Please one of the answers bellow to continue!",
-					room,
-					botAgent,
-					this.modifier
-				);
-				await sendGreetingMessage(room, this.reader, this.modifier);
+				await sendWrongResponseMessage(room, this.reader, this.modifier, this.http);
+
+				await sendGreetingMessage(room, this.reader, this.modifier, this.http);
 				return;
 			}
 
-			await this.transferRoom(validReply, replies);
-
-			if (replies.transferSuccessText) {
-				await sendText(replies.transferSuccessText, room, botAgent, this.modifier);
-			}
+			await sendBotResponses(botResponses, room, this.reader, this.modifier, this.http);
 		} catch (error) {
 			console.error(error);
-			await sendText(
-				replies.technicalErrorText || "Technical error happened, please try again later",
-				room,
-				botAgent,
-				this.modifier
-			);
-		}
-	}
-
-	private async transferRoom(actionTransfer: ActionTransferRoom, botReply: IBotReply): Promise<void> {
-		const room = this.message.room as ILivechatRoom;
-		const { department: departmentNameOrId, conditions, welcomeMessage } = actionTransfer;
-
-		console.log("Transfering room with action", actionTransfer);
-		const { startBusinessHour, stopBusinessHour, workDays } = conditions || {};
-		const department = await this.reader.getLivechatReader().getLivechatDepartmentByIdOrName(departmentNameOrId);
-
-		if (!department) {
-			throw "Cannot find department";
-		}
-
-		const departmentIsOnline = this.reader.getLivechatReader().isOnlineAsync(department.id);
-
-		if (!departmentIsOnline) {
-			throw "Department is not online";
-		}
-
-		if (!isValidTimeRange(startBusinessHour, stopBusinessHour, workDays, botReply.dstEnabled)) {
-			console.error(
-				`Transfer failed to ${department.name} because it is out of business hour from ${startBusinessHour} to ${stopBusinessHour}`
-			);
-
-			await sendText(
-				templateResolver(botReply.departmentOfflineText || "Department is offline, please try again later", {
-					startBusinessHour,
-					stopBusinessHour
-				}),
-				room,
-				room.servedBy!,
-				this.modifier
-			);
-
-			await closeRoom(room, `Transfer failed to ${departmentNameOrId}`, this.modifier);
-			return;
-		}
-
-		await this.modifier
-			.getUpdater()
-			.getLivechatUpdater()
-			.transferVisitor((this.message.room as ILivechatRoom).visitor, {
-				currentRoom: this.message.room as ILivechatRoom,
-				targetDepartment: department.id
-			});
-
-		if (welcomeMessage) {
-			const newRoom = (await this.reader.getRoomReader().getById(room.id)) as ILivechatRoom;
-			await sendText(
-				templateResolver(welcomeMessage, {
-					startBusinessHour,
-					stopBusinessHour
-				}),
-				newRoom,
-				newRoom.servedBy!,
-				this.modifier
-			);
+			await sendTechnicalErrorMessage(room, error, this.reader, this.modifier, this.http);
 		}
 	}
 }

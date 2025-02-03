@@ -1,117 +1,132 @@
-import { inspect } from "util";
-
-import { IModify, IRead } from "@rocket.chat/apps-engine/definition/accessors";
+import { IHttp, IModify, IRead } from "@rocket.chat/apps-engine/definition/accessors";
 import { ILivechatRoom } from "@rocket.chat/apps-engine/definition/livechat";
-import {
-	IMessageAction,
-	IMessageAttachment,
-	MessageActionType,
-	MessageProcessingType
-} from "@rocket.chat/apps-engine/definition/messages";
-import { IUser } from "@rocket.chat/apps-engine/definition/users";
+import { IMessageAttachment } from "@rocket.chat/apps-engine/definition/messages";
+import { ActionsBlock, ButtonElement } from "@rocket.chat/ui-kit";
 
+import { closeChat, selectChatLanguage, transferRoom } from "../actions";
 import { ConfigId } from "../constants/settings";
-import { ActionTransferRoom, BotButtonType, IBotReply, IExtendedMessageAction } from "../types/bot";
+import { IBotResponse } from "../types";
 
-export const getBotReplies = async (reader: IRead): Promise<IBotReply> => {
-	const botRepliesRaw = await reader.getEnvironmentReader().getSettings().getValueById(ConfigId.BOT_REPLIES);
-	return JSON.parse(botRepliesRaw);
-};
+import { templateResolver } from "./template-resolver";
 
-export const getBotResponsesAttachment = async (reader: IRead): Promise<IMessageAttachment | undefined> => {
+export const getBotReplies = async (reader: IRead): Promise<Record<string, IBotResponse[]>> => {
 	try {
-		const botReplies: IBotReply = await getBotReplies(reader);
-		const messageAttachment: IMessageAttachment = {};
-
-		messageAttachment.text = botReplies.text;
-
-		messageAttachment.actions = botReplies.buttons?.map(button => {
-			let messageAction: IMessageAction = {
-				type: MessageActionType.BUTTON,
-				msg_processing_type: MessageProcessingType.RespondWithMessage,
-				msg_in_chat_window: true
-			};
-
-			messageAction.text = button.title;
-
-			switch (button.type) {
-				case BotButtonType.SEND_MESSAGE: {
-					messageAction.msg = button.text;
-					break;
-				}
-				case BotButtonType.TRANSFER_CHAT: {
-					const extendedAction: IExtendedMessageAction = {
-						...messageAction,
-						actionId: computeTransferAction(button),
-						msg: "transfer"
-					};
-					messageAction = {
-						...messageAction,
-						...extendedAction
-					};
-				}
-			}
-			return messageAction;
-		});
-
-		return messageAttachment;
+		const repliesJson = await reader.getEnvironmentReader().getSettings().getValueById(ConfigId.BOT_REPLIES);
+		return JSON.parse(repliesJson);
 	} catch (error) {
-		console.error("Cannot get bot reply", error);
+		console.log("ERROR getting bot responses", error);
+		return {};
 	}
-	return undefined;
 };
 
-export const sendGreetingMessage = async (room: ILivechatRoom, reader: IRead, modifier: IModify) => {
-	const roomAgent = room.servedBy as IUser;
-	const messageBuilder = modifier.getCreator().startMessage();
+export const sendBotResponses = async (
+	botResponses: IBotResponse[],
+	room: ILivechatRoom,
+	reader: IRead,
+	modifier: IModify,
+	http: IHttp,
+	extraData?: any
+) => {
+	console.log("Bot responses", botResponses);
+	const language = room.visitor.livechatData?.["language"] || "en";
 
-	const replies = await getBotResponsesAttachment(reader);
+	const visitorName = room.visitor.name;
+	const agentName = room.servedBy?.name;
 
-	if (!replies) {
-		// TODO send error
-		console.error("Cannot get bot reply for the room ", room.id);
-		return;
-	}
-
-	messageBuilder.addAttachment(replies);
-	messageBuilder.setRoom(room);
-	messageBuilder.setSender(roomAgent);
-	console.log("Sending message", inspect(replies, { depth: 4 }));
-	await modifier.getCreator().finish(messageBuilder);
-};
-
-export const computeTransferAction = (action: ActionTransferRoom, onlyDepartment = false) => {
-	const { department, conditions, title } = action;
-	console.log(inspect(action));
-	if (onlyDepartment) {
-		return `transfer/${department}`;
-	}
-	return `transfer/${department}/${title}/${conditions?.startBusinessHour || "_"}/${
-		conditions?.stopBusinessHour || "_"
-	}`;
-};
-
-export const getTransferAction = (actionRaw: string): ActionTransferRoom | undefined => {
-	if (!actionRaw.startsWith("transfer")) {
-		console.error("Transfer action must starts with transfer");
-		return;
-	}
-
-	const segments = actionRaw.split("/");
-	if (segments.length !== 4) {
-		console.error("Invalid transfer action");
-		return;
-	}
-
-	const [_, department, title, startBusinessHourRaw, stopBusinessHourRaw] = segments;
-
-	return {
-		type: BotButtonType.TRANSFER_CHAT,
-		title: title,
-		department,
-		conditions: {
-			startBusinessHour: startBusinessHourRaw === "_" ? undefined : startBusinessHourRaw,
-			stopBusinessHour: stopBusinessHourRaw === "_" ? undefined : stopBusinessHourRaw
-		}
+	const roomExtraData = {
+		...extraData,
+		visitorName,
+		agentName
 	};
+	try {
+		for (const answer of botResponses) {
+			const { text, buttons, list, image, transfer, close, selectLanguage } = answer;
+			const messageBuilder = modifier.getCreator().startMessage();
+			messageBuilder.setRoom(room);
+			const messageAttachment: IMessageAttachment = {};
+
+			if (text) {
+				messageBuilder.setText(templateResolver(text, language, roomExtraData));
+			}
+
+			const replies = buttons || list;
+
+			if (replies) {
+				const actionBlock: ActionsBlock = {
+					type: "actions",
+					elements: replies.map(
+						(button): ButtonElement =>
+							({
+								type: "button",
+								text: {
+									type: "plain_text",
+									text: templateResolver(button.title, language, roomExtraData),
+									emoji: true
+								},
+								value: templateResolver(button.title, language, roomExtraData),
+								actionId: button.payload
+							} as ButtonElement)
+					)
+				};
+				messageBuilder.addBlocks([actionBlock]);
+			}
+
+			if (image) {
+				messageAttachment.imageUrl = image;
+				messageBuilder.addAttachment(messageAttachment);
+			}
+
+			if (transfer) {
+				await transferRoom(room, transfer, language, reader, modifier);
+			}
+
+			if (close) {
+				await closeChat(room, close, language, reader, modifier);
+			}
+
+			await modifier.getCreator().finish(messageBuilder);
+
+			if (selectLanguage) {
+				await selectChatLanguage(room, selectLanguage, reader, modifier, http);
+
+				const newRoom = (await reader.getRoomReader().getById(room.id)) as ILivechatRoom;
+				await sendGreetingMessage(newRoom, reader, modifier, http);
+			}
+		}
+	} catch (error) {
+		console.error("Cannot send bot responses", error);
+		throw error;
+	}
+};
+
+export const sendGreetingMessage = async (room: ILivechatRoom, reader: IRead, modifier: IModify, http: IHttp) => {
+	const replies = await getBotReplies(reader);
+
+	await sendBotResponses(replies["greeting"], room, reader, modifier, http);
+};
+
+export const sendSelectLanguageMessage = async (room: ILivechatRoom, reader: IRead, modifier: IModify, http: IHttp) => {
+	const replies = await getBotReplies(reader);
+
+	await sendBotResponses(replies["selectLanguage"], room, reader, modifier, http);
+};
+
+export const sendWrongResponseMessage = async (room: ILivechatRoom, reader: IRead, modifier: IModify, http: IHttp) => {
+	const replies = await getBotReplies(reader);
+
+	await sendBotResponses(replies["wrongSelection"], room, reader, modifier, http);
+};
+
+export const sendTechnicalErrorMessage = async (
+	room: ILivechatRoom,
+	error: Error,
+	reader: IRead,
+	modifier: IModify,
+	http: IHttp
+) => {
+	const replies = await getBotReplies(reader);
+
+	await sendBotResponses(replies["technicalError"], room, reader, modifier, http, {
+		errorMessage: error?.message || error
+	});
 };

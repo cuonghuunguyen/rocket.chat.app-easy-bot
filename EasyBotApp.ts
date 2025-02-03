@@ -2,7 +2,6 @@ import { App } from "@rocket.chat/apps-engine/definition/App";
 import {
 	IAppAccessors,
 	IConfigurationExtend,
-	IConfigurationModify,
 	IEnvironmentRead,
 	IHttp,
 	ILogger,
@@ -12,11 +11,10 @@ import {
 } from "@rocket.chat/apps-engine/definition/accessors";
 import { IMessage, IPostMessageSent } from "@rocket.chat/apps-engine/definition/messages";
 import { IAppInfo } from "@rocket.chat/apps-engine/definition/metadata";
-import { ISetting } from "@rocket.chat/apps-engine/definition/settings";
-import { ISettingUpdateContext } from "@rocket.chat/apps-engine/definition/settings/ISettingUpdateContext";
+import { IUIKitResponse, UIKitLivechatBlockInteractionContext } from "@rocket.chat/apps-engine/definition/uikit";
 
-import { ConfigId, settings } from "./constants/settings";
-import { validateIBotReply } from "./helpers/validation";
+import { settings } from "./constants/settings";
+import { ExecuteLivechatBlockActionHandler } from "./hooks/execute-livechat-block-action-handler";
 import PostMessageSentHandler from "./hooks/post-message-sent-handler";
 
 class EasyBotApp extends App implements IPostMessageSent {
@@ -42,31 +40,42 @@ class EasyBotApp extends App implements IPostMessageSent {
 		await postMessageSentHandler.run();
 	}
 
-	async onPreSettingUpdate(
-		context: ISettingUpdateContext,
-		configurationModify: IConfigurationModify,
+	public async executeLivechatBlockActionHandler(
+		context: UIKitLivechatBlockInteractionContext,
 		read: IRead,
-		http: IHttp
-	): Promise<ISetting> {
-		const { newSetting, oldSetting } = context;
-		const { id, value } = newSetting;
-
-		if (id !== ConfigId.BOT_REPLIES) {
-			return newSetting;
-		}
-		let botReplies: any;
-		try {
-			botReplies = JSON.parse(value);
-		} catch (error) {
-			return oldSetting;
-		}
-
-		if (validateIBotReply(botReplies)) {
-			return newSetting;
-		}
-
-		return oldSetting;
+		http: IHttp,
+		persistence: IPersistence,
+		modify: IModify
+	): Promise<IUIKitResponse> {
+		const handler = new ExecuteLivechatBlockActionHandler(this, context, read, http, persistence, modify);
+		return await handler.run();
 	}
+
+	// async onPreSettingUpdate(
+	// 	context: ISettingUpdateContext,
+	// 	configurationModify: IConfigurationModify,
+	// 	read: IRead,
+	// 	http: IHttp
+	// ): Promise<ISetting> {
+	// 	const { newSetting, oldSetting } = context;
+	// 	const { id, value } = newSetting;
+
+	// 	if (id !== ConfigId.BOT_REPLIES) {
+	// 		return newSetting;
+	// 	}
+	// 	let botReplies: any;
+	// 	try {
+	// 		botReplies = JSON.parse(value);
+	// 	} catch (error) {
+	// 		return oldSetting;
+	// 	}
+
+	// 	if (validateIBotReply(botReplies)) {
+	// 		return newSetting;
+	// 	}
+
+	// 	return oldSetting;
+	// }
 }
 
 export default EasyBotApp;

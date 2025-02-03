@@ -2,5 +2,9 @@
 	"config_bot_agent_username_label": "Bot Agent Username",
 	"config_bot_agent_username_desc": "After creating the Bot User and add it to your BOT department, add its username here",
 	"config_bot_replies_label": "Bot Replies Config",
-	"config_bot_replies_desc": "The JSON which is used for customizing bot responses"
+	"config_bot_replies_desc": "The JSON which is used for customizing bot responses. You can use [this tool](https://jsoneditoronline.org/#left=cloud.60d1a19acf194ff8bb46bf1ba4002ca7) to edit and verify the bot responses.",
+	"config_dst_enabled_label": "Daylight saving time enabled",
+	"config_dst_enabled_desc": "Daylight Saving Time (DST) is a system where clocks are adjusted forward by one hour during warmer months to extend evening daylight.",
+	"config_department_offline_text_label": "Department offline text",
+	"config_department_offline_text_desc": "The message that will be sent to the user if the department is offline"
 }
